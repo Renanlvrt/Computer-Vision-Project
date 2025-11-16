@@ -1,3 +1,5 @@
+conda deactivate
+
 source .venv/bin/activate
 echo "activated the virtual environement!"
 
