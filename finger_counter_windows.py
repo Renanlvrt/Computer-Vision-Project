@@ -6,7 +6,7 @@ import numpy as np
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
     static_image_mode=False,
-    max_num_hands=1,
+    max_num_hands=2,
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
@@ -15,7 +15,7 @@ mp_draw = mp.solutions.drawing_utils
 # Open webcam
 cap = cv2.VideoCapture(0)
 
-def count_fingers(landmarks):
+def count_fingers(landmarks, handedness):
     """
     Count raised fingers from hand landmarks.
     Returns: (fingers_count, thumb_is_up)
@@ -32,8 +32,11 @@ def count_fingers(landmarks):
             fingers_raised += 1
 
     # Check thumb separately (different axis)
-    thumb_raised = 1 if landmarks[4].x < landmarks[3].x else 0
-
+    if handedness == "Right":
+        thumb_raised = 1 if landmarks[4].x < landmarks[3].x else 0
+    else:  # Left hand: reverse comparison
+        thumb_raised = 1 if landmarks[4].x > landmarks[3].x else 0
+        
     return fingers_raised, thumb_raised
 
 
@@ -51,44 +54,60 @@ def main():
 
         # Detect hands
         results = hands.process(rgb_frame)
+        
+        total_fingers = 0
 
-        if results.multi_hand_landmarks:
-            hand_landmarks = results.multi_hand_landmarks[0]
+        if results.multi_hand_landmarks and results.multi_handedness:
+            for (hand_landmarks, hand_handedness) in zip(results.multi_hand_landmarks, results.multi_handedness):
+                #hand_landmarks = results.multi_hand_landmarks[0]
 
-            # Draw skeleton
-            mp_draw.draw_landmarks(
-                frame,
-                hand_landmarks,
-                mp_hands.HAND_CONNECTIONS
-            )
+                # Draw skeleton
+                mp_draw.draw_landmarks(
+                    frame,
+                    hand_landmarks,
+                    mp_hands.HAND_CONNECTIONS
+                )
 
-            landmarks = hand_landmarks.landmark
+                landmarks = hand_landmarks.landmark
+                label = hand_handedness.classification[0].label  # "Left" or "Right"
 
-            # Count fingers
-            fingers_count, thumb_up = count_fingers(landmarks)
+                # Count fingers
+                fingers_count, thumb_up = count_fingers(landmarks, label)
+                total_fingers += fingers_count + thumb_up
 
-            # Display finger count
+                y_offset = 100
+                cv2.putText(
+                    frame,
+                    f"{label} Hand: {fingers_count + thumb_up} fingers",
+                    (50, y_offset),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (200, 100, 255),
+                    2
+                )
+                if thumb_up:
+                    cv2.putText(
+                        frame,
+                        "Thumb: UP",
+                        (350, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (100, 255, 255),
+                        2
+                    )
+                y_offset += 60  # Move the next hand display down
+
+            # Display the TOTAL after the loop, so only one total appears:
             cv2.putText(
                 frame,
-                f"Fingers: {fingers_count}",
+                f"Total Fingers: {total_fingers}",
                 (50, 50),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1.5,
                 (0, 255, 0),
                 3
             )
-
-            # Display thumb status
-            if thumb_up:
-                cv2.putText(
-                    frame,
-                    "Thumb: UP",
-                    (50, 100),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (255, 0, 0),
-                    2
-                )
+                
         else:
             cv2.putText(
                 frame,
@@ -99,9 +118,10 @@ def main():
                 (0, 0, 255),
                 2
             )
+        
 
         # Display window
-        cv2.imshow("Finger Counter", frame)
+        cv2.imshow("Finger Counter", frame,)
 
         # Exit on 'q'
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -110,6 +130,7 @@ def main():
     # Cleanup
     cap.release()
     cv2.destroyAllWindows()
+    
 
 
 if __name__ == "__main__":
